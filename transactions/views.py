@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 
 from django.views.generic import (
     View, 
@@ -215,57 +216,81 @@ class SaleView(ListView):
 
 
 # used to generate a bill object and save items
-class SaleCreateView(View):                                                      
+class SaleCreateView(View):
     template_name = 'sales/new_sale.html'
+
+    def calculate_grand_total(self, sale_items):
+        grand_total = 0
+        for item in sale_items:
+            grand_total += item.net_amount
+        return grand_total
 
     def get(self, request):
         form = SaleForm(request.GET or None)
-        formset = SaleItemFormset(request.GET or None)                          # renders an empty formset
+        formset = SaleItemFormset(request.GET or None)
         stocks = Stock.objects.filter(is_deleted=False)
         context = {
-            'form'      : form,
-            'formset'   : formset,
-            'stocks'    : stocks
+            'form': form,
+            'formset': formset,
+            'stocks': stocks
         }
         return render(request, self.template_name, context)
 
     def post(self, request):
+        sale_items = []   
         form = SaleForm(request.POST)
-        formset = SaleItemFormset(request.POST)                                 # recieves a post method for the formset
+        formset = SaleItemFormset(request.POST)
+
         if form.is_valid() and formset.is_valid():
-            # saves bill
-            billobj = form.save(commit=False)
-            billobj.save()     
-            # create bill details object
-            billdetailsobj = SaleBillDetails(billno=billobj)
-            billdetailsobj.save()
-            for form in formset:                                                # for loop to save each individual form as its own object
-                # false saves the item and links bill to the item
-                billitem = form.save(commit=False)
-                billitem.billno = billobj                                       # links the bill object to the items
-                # gets the stock item
-                stock = get_object_or_404(Stock, name=billitem.stock.name)      
-                # calculates the total price
-                
-                billitem.totalprice = (billitem.perprice * billitem.quantity)
-                billitem.net_amount= ((billitem.totalprice) - (billitem.totalprice * (billitem.discount / 100)))
-                print(billitem.net_amount)
-                # updates quantity in stock db
-                stock.quantity -= billitem.quantity   
-                # saves bill item and stock
-                stock.save()
-                billitem.save()
+            with transaction.atomic():
+                billobj = form.save(commit=False)
+                billobj.save()
+
+                billdetailsobj = SaleBillDetails(billno=billobj)
+                billdetailsobj.save()
+
+                grand_total = 0
+
+                for form in formset:
+                    billitem = form.save(commit=False)
+                    billitem.billno = billobj
+
+                    stock = get_object_or_404(Stock, name=billitem.stock.name)
+                    billitem.totalprice = billitem.perprice * billitem.quantity
+
+                    # Calculate and set discounted price
+                    quantity = form.cleaned_data.get('quantity')
+                    price = form.cleaned_data.get('perprice')
+                    discount = form.cleaned_data.get('discount')
+                    net_amount = price - (price * (discount / 100))
+                    form.cleaned_data['discounted_price'] = net_amount
+                    billitem.net_amount = net_amount
+
+                    stock.quantity -= quantity
+                    stock.save()
+
+                   
+
+                    grand_total += billitem.net_amount
+
+                    sale_items.append(billitem)
+                    billitem.grand_total = self.calculate_grand_total(sale_items)
+                    # billobj.save()
+                    billitem.save()
+
+            # Calculate and set billobj.grand_total outside the transaction block
+           
+
             messages.success(request, "Sold items have been registered successfully")
             return redirect('sale-bill', billno=billobj.billno)
+
         form = SaleForm(request.GET or None)
         formset = SaleItemFormset(request.GET or None)
         context = {
-            'form'      : form,
-            'formset'   : formset,
+            'form': form,
+            'formset': formset,
         }
         return render(request, self.template_name, context)
-
-
 # used to delete a bill object
 class SaleDeleteView(SuccessMessageMixin, DeleteView):
     model = SaleBill

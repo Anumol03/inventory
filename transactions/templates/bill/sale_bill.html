@@ -88,7 +88,7 @@
                                         <td class="inner-box" style="width: 12%; font-weight: bold; text-align: center;">AMOUNT </td>
                                         <td class="inner-box" style="width: 12%; font-weight: bold; text-align: center;">DISCOUNT</td>
                                         <td class="inner-box" style="width: 12%; font-weight: bold; text-align: center;">TOTAL</td>
-                                        <td class="inner-box" style="width: 12%; font-weight: bold; text-align: center;">GRAND TOTAL</td>
+                                     
                                     </tr>
                                     {% for item in items %}
                                         <tr style="height: auto;">
@@ -99,8 +99,16 @@
                                             <td class="inner-box" style="width: 12%;">&nbsp; {{ item.totalprice }}</td>
                                             <td class="inner-box" style="width: 12%;">&nbsp;{{ item.discount }}</td>
                                             <td class="inner-box" style="width: 5%;">&nbsp;{{item.net_amount}}</td>
+                                           
                                         </tr>
                                     {% endfor %}
+                                   
+                                    <tr>
+                                        <td colspan="7" class="inner-box" style="text-align: right; font-weight: bold;">Grand Total:</td>
+                                        <td class="inner-box" style="width: 5%;">&nbsp;{{ items.last.grand_total }}</td>
+                                    </tr>
+                                   
+                                   
                                 </tbody>
                             </table>
                             </td>
